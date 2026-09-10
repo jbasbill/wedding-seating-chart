@@ -9,20 +9,21 @@ saved in your browser (with JSON export/import for backups and sharing).
 
 ## Using it
 
-**Locally (works right now):** download or clone the repo and open `index.html` in any
-browser. No server needed. Your plan is stored in that browser.
+**Live:** https://jbasbill.github.io/wedding-seating-chart/
 
-**Hosted on GitHub Pages:** GitHub Pages is not available for private repositories on the
-free plan. To publish this:
+**Locally:** download or clone the repo and open `index.html` in any browser. No server
+needed.
 
-1. Make the repo public, or upgrade the account to GitHub Pro.
-2. Settings → Pages → Build and deployment → Source: **GitHub Actions**.
-3. Settings → Secrets and variables → Actions → Variables → add `PAGES_ENABLED` = `true`.
-4. Push, or re-run the *Deploy to GitHub Pages* workflow. The site publishes at
-   `https://<user>.github.io/wedding-seating-chart/`.
+Your plan is stored in the browser you use (localStorage), per device. Use **Export**
+for a `.json` backup you can move between devices or share.
 
-The deploy workflow is gated on that `PAGES_ENABLED` variable so it stays green until
-you opt in.
+### Deployment
+
+Pushing to `main` publishes the site via the *Deploy to GitHub Pages* workflow
+(`.github/workflows/pages.yml`). The job is gated on a repository variable
+`PAGES_ENABLED = true` (Settings → Secrets and variables → Actions → Variables); without
+it the workflow is skipped, which is what you want on a private repo where Pages is
+unavailable.
 
 ### Guests
 - **Paste names** — one per line — into the box and click *Add names*.
