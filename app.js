@@ -106,17 +106,25 @@
       return pts;
     }
 
-    // Rectangular: banquet style — seats along the two long edges.
-    const top = Math.ceil(n / 2);
-    const bottom = n - top;
-    const place = (count, y) => {
+    // Rectangular: banquet style — seats spread along the two long edges, so a
+    // table stood on its end seats guests down its (now vertical) sides.
+    const horizontal = t.w >= t.h;
+    const sideA = Math.ceil(n / 2);
+    const sideB = n - sideA;
+    const place = (count, edge) => {
       for (let i = 0; i < count; i++) {
         const frac = (i + 1) / (count + 1);
-        pts.push({ x: frac * t.w, y });
+        if (horizontal) pts.push({ x: frac * t.w, y: edge });
+        else pts.push({ x: edge, y: frac * t.h });
       }
     };
-    place(top, -SEAT_GAP);
-    place(bottom, t.h + SEAT_GAP);
+    if (horizontal) {
+      place(sideA, -SEAT_GAP);
+      place(sideB, t.h + SEAT_GAP);
+    } else {
+      place(sideA, -SEAT_GAP);
+      place(sideB, t.w + SEAT_GAP);
+    }
     return pts;
   }
 
