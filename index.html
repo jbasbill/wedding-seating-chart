@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wedding Seating Chart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">
+      <span class="brand-mark">&#10086;</span>
+      <h1>Wedding Seating Chart</h1>
+    </div>
+
+    <div class="toolbar">
+      <div class="tool-group">
+        <button id="add-rect" class="btn" title="Add a rectangular / banquet table">&#9647; Rectangular table</button>
+        <button id="add-circle" class="btn" title="Add a round table">&#9711; Round table</button>
+      </div>
+
+      <div class="tool-group">
+        <button id="lock-selected" class="btn" title="Lock every selected table and guest">&#128274; Lock selected</button>
+        <button id="unlock-selected" class="btn" title="Unlock every selected table and guest">&#128275; Unlock selected</button>
+      </div>
+
+      <div class="tool-group">
+        <label class="check"><input type="checkbox" id="snap-toggle" checked /> Snap to grid</label>
+        <label class="sel">Grid
+          <select id="grid-size">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="25">25</option>
+            <option value="40">40</option>
+            <option value="50">50</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="tool-group">
+        <button id="export-project" class="btn ghost" title="Download the whole plan as a .json file">Export</button>
+        <button id="import-project" class="btn ghost" title="Load a plan from a .json file">Import</button>
+        <button id="clear-all" class="btn ghost danger" title="Delete everything and start over">Clear</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="layout">
+    <aside id="sidebar">
+      <section class="panel">
+        <h2>Add guests</h2>
+        <p class="hint">Paste names (one per line) or import a CSV. The first column, or a
+          <code>Name</code> / <code>First</code>+<code>Last</code> column, is used.</p>
+        <textarea id="paste-names" rows="4" placeholder="Ada Lovelace&#10;Grace Hopper&#10;Alan Turing"></textarea>
+        <div class="row">
+          <button id="add-pasted" class="btn small">Add names</button>
+          <label class="btn small ghost file">
+            Import CSV
+            <input type="file" id="csv-file" accept=".csv,text/csv" hidden />
+          </label>
+        </div>
+        <p id="import-status" class="status" hidden></p>
+      </section>
+
+      <section class="panel grow">
+        <div class="panel-head">
+          <h2>Guests</h2>
+          <span id="guest-counts" class="counts"></span>
+        </div>
+        <input type="search" id="guest-search" placeholder="Filter guests&hellip;" />
+        <label class="check tight"><input type="checkbox" id="show-seated" /> Show seated guests</label>
+        <ul id="guest-list" class="guest-list"></ul>
+        <p class="hint drop-hint">Drag a guest onto a seat to sit them. Drag one back here to unseat.</p>
+      </section>
+    </aside>
+
+    <main id="stage">
+      <div id="canvas">
+        <div id="marquee" hidden></div>
+      </div>
+    </main>
+
+    <aside id="inspector">
+      <h2>Details</h2>
+      <div id="inspector-body">
+        <p class="hint">Select a table or guest to edit it. Shift-click or drag a box to select many, then use
+          <strong>Lock selected</strong>.</p>
+      </div>
+    </aside>
+  </div>
+
+  <input type="file" id="project-file" accept=".json,application/json" hidden />
+  <a id="download-anchor" hidden></a>
+
+  <script src="app.js"></script>
+</body>
+</html>
