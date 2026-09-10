@@ -16,6 +16,11 @@ concurrency:
 
 jobs:
   deploy:
+    # GitHub Pages is unavailable on private repos on the Free plan, which would make
+    # this job fail on every push. Enable it deliberately: turn on Pages
+    # (Settings -> Pages -> Source: GitHub Actions), then add a repository variable
+    # PAGES_ENABLED = true (Settings -> Secrets and variables -> Actions -> Variables).
+    if: vars.PAGES_ENABLED == 'true'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

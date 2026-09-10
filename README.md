@@ -9,8 +9,20 @@ saved in your browser (with JSON export/import for backups and sharing).
 
 ## Using it
 
-Open `index.html` in a browser, or visit the GitHub Pages URL if Pages is enabled for
-this repo (Settings → Pages → Build and deployment → GitHub Actions).
+**Locally (works right now):** download or clone the repo and open `index.html` in any
+browser. No server needed. Your plan is stored in that browser.
+
+**Hosted on GitHub Pages:** GitHub Pages is not available for private repositories on the
+free plan. To publish this:
+
+1. Make the repo public, or upgrade the account to GitHub Pro.
+2. Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+3. Settings → Secrets and variables → Actions → Variables → add `PAGES_ENABLED` = `true`.
+4. Push, or re-run the *Deploy to GitHub Pages* workflow. The site publishes at
+   `https://<user>.github.io/wedding-seating-chart/`.
+
+The deploy workflow is gated on that `PAGES_ENABLED` variable so it stays green until
+you opt in.
 
 ### Guests
 - **Paste names** — one per line — into the box and click *Add names*.
