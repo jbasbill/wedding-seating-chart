@@ -5,8 +5,11 @@
   "use strict";
 
   const STORAGE_KEY = "wedding-seating-chart:v1";
-  const CANVAS_W = 2600;
-  const CANVAS_H = 1800;
+  const MIN_CANVAS_W = 2600;      // the grid never shrinks below this
+  const MIN_CANVAS_H = 1800;
+  const CANVAS_MARGIN = 500;      // breathing room kept past the furthest table
+  const EDGE_PAD = 120;           // dragging within this of the edge grows the grid
+  const GROW_STEP = 800;          // grid grows in chunks this big
   const SEAT_GAP = 30;            // distance from table edge to seat centre
   const DRAG_THRESHOLD = 4;       // px before a press becomes a drag
 
@@ -20,9 +23,14 @@
   // ---------------------------------------------------------------- state ---
   let state = defaultState();
   const selection = new Set(); // holds table ids and person ids
+  let clipboard = [];          // table snapshots for copy / paste
 
   function defaultState() {
-    return { people: [], tables: [], settings: { snap: true, grid: 20 } };
+    return {
+      people: [],
+      tables: [],
+      settings: { snap: true, grid: 20, canvasW: MIN_CANVAS_W, canvasH: MIN_CANVAS_H },
+    };
   }
 
   function load() {
@@ -41,6 +49,8 @@
     s.settings = s.settings && typeof s.settings === "object" ? s.settings : {};
     if (typeof s.settings.snap !== "boolean") s.settings.snap = true;
     if (!Number.isFinite(s.settings.grid)) s.settings.grid = 20;
+    s.settings.canvasW = Math.max(MIN_CANVAS_W, s.settings.canvasW || 0);
+    s.settings.canvasH = Math.max(MIN_CANVAS_H, s.settings.canvasH || 0);
     for (const p of s.people) {
       p.id = p.id || uid();
       p.name = String(p.name || "").trim() || "Guest";
@@ -88,6 +98,55 @@
   function tableCenter(t) {
     const b = tableBox(t);
     return { x: t.x + b.w / 2, y: t.y + b.h / 2 };
+  }
+
+  function applyCanvasSize() {
+    canvas.style.width = state.settings.canvasW + "px";
+    canvas.style.height = state.settings.canvasH + "px";
+  }
+
+  /* Grow the grid to fit the furthest table, and reclaim large empty margins on
+   * the top/left by shifting everything back toward the origin (scroll is
+   * compensated so the view doesn't jump). Never runs mid-drag. */
+  function fitCanvasToContent() {
+    if (!state.tables.length) {
+      state.settings.canvasW = MIN_CANVAS_W;
+      state.settings.canvasH = MIN_CANVAS_H;
+      applyCanvasSize();
+      return;
+    }
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+    for (const t of state.tables) {
+      const b = tableBox(t);
+      minX = Math.min(minX, t.x);
+      minY = Math.min(minY, t.y);
+      maxX = Math.max(maxX, t.x + b.w);
+      maxY = Math.max(maxY, t.y + b.h);
+    }
+
+    // Only reclaim when the whole layout has drifted well clear of the origin,
+    // so an ordinary edit never yanks coordinates around.
+    const expanded =
+      state.settings.canvasW > MIN_CANVAS_W || state.settings.canvasH > MIN_CANVAS_H;
+    const slack = CANVAS_MARGIN + GROW_STEP;
+    const shiftX = expanded && minX > slack ? Math.round(minX - CANVAS_MARGIN) : 0;
+    const shiftY = expanded && minY > slack ? Math.round(minY - CANVAS_MARGIN) : 0;
+    if (shiftX || shiftY) {
+      const sx = stage.scrollLeft;
+      const sy = stage.scrollTop;
+      for (const t of state.tables) { t.x -= shiftX; t.y -= shiftY; }
+      maxX -= shiftX;
+      maxY -= shiftY;
+      state.settings.canvasW = Math.max(MIN_CANVAS_W, Math.round(maxX + CANVAS_MARGIN));
+      state.settings.canvasH = Math.max(MIN_CANVAS_H, Math.round(maxY + CANVAS_MARGIN));
+      applyCanvasSize();
+      stage.scrollLeft = sx - shiftX;
+      stage.scrollTop = sy - shiftY;
+    } else {
+      state.settings.canvasW = Math.max(MIN_CANVAS_W, Math.round(maxX + CANVAS_MARGIN));
+      state.settings.canvasH = Math.max(MIN_CANVAS_H, Math.round(maxY + CANVAS_MARGIN));
+      applyCanvasSize();
+    }
   }
 
   /** Seat centres in coordinates local to the table group origin (t.x, t.y). */
@@ -161,7 +220,6 @@
   }
 
   function addTable(kind) {
-    const stage = document.getElementById("stage");
     const base = kind === "circle" ? CIRCLE_DEFAULT : RECT_DEFAULT;
     const b = kind === "circle" ? { w: base.r * 2, h: base.r * 2 } : { w: base.w, h: base.h };
     const cx = stage.scrollLeft + stage.clientWidth / 2;
@@ -170,8 +228,8 @@
       id: uid(),
       kind,
       name: kind === "circle" ? "Round table" : "Head table",
-      x: clamp(snap(cx - b.w / 2), 0, CANVAS_W - b.w),
-      y: clamp(snap(cy - b.h / 2), 0, CANVAS_H - b.h),
+      x: Math.max(0, snap(cx - b.w / 2)),
+      y: Math.max(0, snap(cy - b.h / 2)),
       seats: base.seats,
       locked: false,
     };
@@ -187,12 +245,48 @@
     const copy = JSON.parse(JSON.stringify(t));
     copy.id = uid();
     copy.name = t.name ? t.name + " (copy)" : "";
-    copy.x = clamp(t.x + 40, 0, CANVAS_W - tableBox(t).w);
-    copy.y = clamp(t.y + 40, 0, CANVAS_H - tableBox(t).h);
+    copy.x = t.x + 40;
+    copy.y = t.y + 40;
     state.tables.push(copy);
     selection.clear();
     selection.add(copy.id);
     render();
+  }
+
+  function copyTables(tables) {
+    if (!tables.length) return;
+    clipboard = tables.map((t) => {
+      const snap = JSON.parse(JSON.stringify(t));
+      delete snap.id;
+      snap.locked = false;
+      return snap;
+    });
+    toast(`Copied ${tables.length} table${tables.length === 1 ? "" : "s"} — paste with ${modKey()}+V`);
+  }
+
+  function pasteTables() {
+    if (!clipboard.length) return;
+    const step = Math.max(state.settings.grid * 2, 40);
+    const ids = [];
+    for (const snap of clipboard) {
+      const t = JSON.parse(JSON.stringify(snap));
+      t.id = uid();
+      t.locked = false;
+      t.x = Math.max(0, t.x + step);
+      t.y = Math.max(0, t.y + step);
+      state.tables.push(t);
+      ids.push(t.id);
+    }
+    // stack repeated pastes diagonally instead of on top of each other
+    clipboard = clipboard.map((s) => ({ ...s, x: s.x + step, y: s.y + step }));
+    selection.clear();
+    ids.forEach((id) => selection.add(id));
+    render();
+    toast(`Pasted ${ids.length} table${ids.length === 1 ? "" : "s"}`);
+  }
+
+  function modKey() {
+    return navigator.platform && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
   }
 
   function deleteTable(id) {
@@ -290,14 +384,30 @@
     return node;
   }
 
+  let toastTimer = null;
+  function toast(msg) {
+    let node = document.getElementById("toast");
+    if (!node) {
+      node = el("div");
+      node.id = "toast";
+      document.body.appendChild(node);
+    }
+    node.textContent = msg;
+    node.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => node.classList.remove("show"), 1800);
+  }
+
   // --------------------------------------------------------------- render ---
   const canvas = document.getElementById("canvas");
+  const stage = document.getElementById("stage");
   const guestList = document.getElementById("guest-list");
   const inspectorBody = document.getElementById("inspector-body");
 
   function render() {
     normalize();
     document.documentElement.style.setProperty("--grid", state.settings.grid + "px");
+    fitCanvasToContent();
     renderCanvas();
     renderSidebar();
     renderInspector();
@@ -495,9 +605,16 @@
     inspectorBody.appendChild(el("p", "kv",
       `${tables.length} table${tables.length === 1 ? "" : "s"} and ` +
       `${people.length} guest${people.length === 1 ? "" : "s"} selected.`));
+
+    if (tables.length >= 1) inspectorBody.appendChild(tableGroupInspector(tables));
+
     const actions = el("div", "inspector-actions");
     actions.appendChild(mkButton("🔒 Lock all", () => setLocked(true)));
     actions.appendChild(mkButton("🔓 Unlock all", () => setLocked(false)));
+    if (tables.length >= 1) {
+      actions.appendChild(mkButton("Copy tables", () => copyTables(tables)));
+      actions.appendChild(mkButton("Duplicate tables", () => { copyTables(tables); pasteTables(); }));
+    }
     actions.appendChild(mkButton("Delete all", () => {
       if (!confirm(`Delete ${tables.length} table(s) and ${people.length} guest(s)?`)) return;
       tables.forEach((t) => deleteTable(t.id));
@@ -505,6 +622,80 @@
       render();
     }, "danger"));
     inspectorBody.appendChild(actions);
+  }
+
+  function tableGroupInspector(tables) {
+    const wrap = el("div", "group-edit");
+    const rects = tables.filter((t) => t.kind === "rect");
+    const circles = tables.filter((t) => t.kind === "circle");
+    const common = (arr, fn) => {
+      const first = fn(arr[0]);
+      return arr.every((t) => fn(t) === first) ? first : null;
+    };
+
+    wrap.appendChild(el("p", "field-title",
+      `Apply to ${tables.length} selected table${tables.length === 1 ? "" : "s"} — a blank field is left unchanged, ` +
+      `"mixed" means they currently differ`));
+
+    const seatRow = el("div", "field-row");
+    seatRow.appendChild(mkField("Seats", groupNumber(common(tables, (t) => t.seats), 0, 40, (v) => {
+      tables.forEach((t) => { t.seats = v; });
+      render();
+    })));
+    wrap.appendChild(seatRow);
+
+    if (rects.length) {
+      const row = el("div", "field-row");
+      const wLabel = circles.length ? "Width (rect.)" : "Width";
+      row.appendChild(mkField(wLabel, groupNumber(common(rects, (t) => t.w), 60, 900, (v) => {
+        rects.forEach((t) => { t.w = v; });
+        render();
+      })));
+      row.appendChild(mkField("Height", groupNumber(common(rects, (t) => t.h), 40, 500, (v) => {
+        rects.forEach((t) => { t.h = v; });
+        render();
+      })));
+      wrap.appendChild(row);
+    }
+
+    if (circles.length) {
+      const row = el("div", "field-row");
+      const rLabel = rects.length ? "Radius (round)" : "Radius";
+      row.appendChild(mkField(rLabel, groupNumber(common(circles, (t) => t.r), 30, 260, (v) => {
+        circles.forEach((t) => { t.r = v; });
+        render();
+      })));
+      wrap.appendChild(row);
+    }
+
+    const acts = el("div", "inspector-actions");
+    acts.appendChild(mkButton(common(tables, (t) => t.locked) === true ? "🔓 Unlock" : "🔒 Lock", () => {
+      const anyUnlocked = tables.some((t) => !t.locked);
+      tables.forEach((t) => { t.locked = anyUnlocked; });
+      render();
+    }));
+    if (rects.length) {
+      acts.appendChild(mkButton("Rotate rectangular", () => {
+        rects.forEach((t) => { const w = t.w; t.w = t.h; t.h = w; });
+        render();
+      }));
+    }
+    wrap.appendChild(acts);
+    return wrap;
+  }
+
+  function groupNumber(commonValue, min, max, onCommit) {
+    const input = el("input");
+    input.type = "number";
+    input.min = min;
+    input.max = max;
+    if (commonValue != null) input.value = commonValue;
+    input.placeholder = commonValue == null ? "mixed" : "";
+    input.addEventListener("change", () => {
+      if (input.value.trim() === "") return;
+      onCommit(clamp(parseInt(input.value, 10) || min, min, max));
+    });
+    return input;
   }
 
   function tableInspector(t) {
@@ -657,7 +848,10 @@
   // --------------------------------------------------- table drag on canvas ---
   let dragPersonId = null; // id of person being dragged via native DnD
 
-  let press = null; // { id, startX, startY, origins:Map, moved:bool }
+  const EDGE_SCROLL_ZONE = 44;   // cursor this close to a stage edge auto-scrolls
+  const EDGE_SCROLL_SPEED = 22;  // px per frame at the edge
+  let press = null; // { origins, startX, startY, scrollX0, scrollY0, lastX, lastY, moved, shift }
+  let autoScrollRAF = null;
 
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
@@ -688,32 +882,127 @@
       const st = state.tables.find((x) => x.id === id);
       if (st && !st.locked) origins.set(id, { x: st.x, y: st.y });
     }
-    press = { id: t.id, startX: e.clientX, startY: e.clientY, origins, moved: false, shift: e.shiftKey || e.metaKey || e.ctrlKey };
+    press = {
+      id: t.id, origins,
+      startX: e.clientX, startY: e.clientY,
+      scrollX0: stage.scrollLeft, scrollY0: stage.scrollTop,
+      lastX: e.clientX, lastY: e.clientY,
+      moved: false, shift: e.shiftKey || e.metaKey || e.ctrlKey,
+    };
     canvas.setPointerCapture(e.pointerId);
   });
 
   canvas.addEventListener("pointermove", (e) => {
     if (marquee) { updateMarquee(e); return; }
     if (!press) return;
-    const dx = e.clientX - press.startX;
-    const dy = e.clientY - press.startY;
-    if (!press.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+    press.lastX = e.clientX;
+    press.lastY = e.clientY;
+    const moved = Math.hypot(e.clientX - press.startX, e.clientY - press.startY);
+    if (!press.moved && moved < DRAG_THRESHOLD) return;
     press.moved = true;
+    applyGroupDrag();
+    updateAutoScroll();
+  });
 
+  /* Keep scrolling the stage while the cursor sits in the edge zone during a
+   * drag, so a table can be dragged past the visible area. */
+  let autoScrollV = { x: 0, y: 0 };
+
+  function updateAutoScroll() {
+    if (!press || !press.moved) return stopAutoScroll();
+    const r = stage.getBoundingClientRect();
+    autoScrollV = {
+      x: press.lastX < r.left + EDGE_SCROLL_ZONE ? -1
+        : press.lastX > r.right - EDGE_SCROLL_ZONE ? 1 : 0,
+      y: press.lastY < r.top + EDGE_SCROLL_ZONE ? -1
+        : press.lastY > r.bottom - EDGE_SCROLL_ZONE ? 1 : 0,
+    };
+    if (!autoScrollV.x && !autoScrollV.y) return stopAutoScroll();
+    if (autoScrollRAF || typeof requestAnimationFrame !== "function") return;
+    const tick = () => {
+      if (!press || !press.moved || (!autoScrollV.x && !autoScrollV.y)) {
+        autoScrollRAF = null;
+        return;
+      }
+      stage.scrollLeft += autoScrollV.x * EDGE_SCROLL_SPEED;
+      stage.scrollTop += autoScrollV.y * EDGE_SCROLL_SPEED;
+      applyGroupDrag();
+      autoScrollRAF = requestAnimationFrame(tick);
+    };
+    autoScrollRAF = requestAnimationFrame(tick);
+  }
+
+  function stopAutoScroll() {
+    if (autoScrollRAF && typeof cancelAnimationFrame === "function") cancelAnimationFrame(autoScrollRAF);
+    autoScrollRAF = null;
+    autoScrollV = { x: 0, y: 0 };
+  }
+
+  /* Move every dragged table to follow the cursor (in grid coordinates, so it
+   * tracks correctly even as the stage scrolls), growing the grid — and, at the
+   * top/left, sliding all content plus the scroll position — so a table can be
+   * dragged past any boundary without limit. */
+  function applyGroupDrag() {
+    if (!press) return;
+    const dx = press.lastX - press.startX + (stage.scrollLeft - press.scrollX0);
+    const dy = press.lastY - press.startY + (stage.scrollTop - press.scrollY0);
+    const cw = state.settings.canvasW;
+    const ch = state.settings.canvasH;
+    const chunk = (over) => Math.ceil(over / GROW_STEP) * GROW_STEP;
+
+    const dragged = [];
+    let growL = 0, growT = 0, growR = 0, growB = 0;
     for (const [id, origin] of press.origins) {
       const t = state.tables.find((x) => x.id === id);
       if (!t) continue;
       const b = tableBox(t);
-      t.x = clamp(snap(origin.x + dx), 0, CANVAS_W - b.w);
-      t.y = clamp(snap(origin.y + dy), 0, CANVAS_H - b.h);
-      const gnode = canvas.querySelector(`.table-group[data-id="${id}"]`);
-      if (gnode) { gnode.style.left = t.x + "px"; gnode.style.top = t.y + "px"; }
+      const nx = snap(origin.x + dx);
+      const ny = snap(origin.y + dy);
+      dragged.push(t);
+      if (nx < EDGE_PAD) growL = Math.max(growL, chunk(EDGE_PAD - nx));
+      if (ny < EDGE_PAD) growT = Math.max(growT, chunk(EDGE_PAD - ny));
+      if (nx + b.w > cw - EDGE_PAD) growR = Math.max(growR, chunk(nx + b.w - (cw - EDGE_PAD)));
+      if (ny + b.h > ch - EDGE_PAD) growB = Math.max(growB, chunk(ny + b.h - (ch - EDGE_PAD)));
     }
-  });
+
+    if (growL || growT || growR || growB) {
+      state.settings.canvasW += growR + growL;
+      state.settings.canvasH += growB + growT;
+      if (growL || growT) {
+        for (const t of state.tables) { t.x += growL; t.y += growT; }
+        for (const o of press.origins.values()) { o.x += growL; o.y += growT; }
+        stage.scrollLeft += growL;
+        stage.scrollTop += growT;
+        press.scrollX0 += growL; // cancel the compensating scroll so dx stays put
+        press.scrollY0 += growT;
+      }
+      applyCanvasSize();
+      repositionAllGroups();
+    }
+
+    const ddx = press.lastX - press.startX + (stage.scrollLeft - press.scrollX0);
+    const ddy = press.lastY - press.startY + (stage.scrollTop - press.scrollY0);
+    for (const t of dragged) {
+      const o = press.origins.get(t.id);
+      t.x = snap(o.x + ddx);
+      t.y = snap(o.y + ddy);
+      moveGroup(t);
+    }
+  }
+
+  function moveGroup(t) {
+    const g = canvas.querySelector(`.table-group[data-id="${t.id}"]`);
+    if (g) { g.style.left = t.x + "px"; g.style.top = t.y + "px"; }
+  }
+
+  function repositionAllGroups() {
+    for (const t of state.tables) moveGroup(t);
+  }
 
   function endPress(e) {
     if (marquee) { endMarquee(); return; }
     if (!press) return;
+    stopAutoScroll();
     if (press.moved) {
       render();
     } else if (!press.shift) {
@@ -957,6 +1246,11 @@
       state.tables.forEach((t) => selection.add(t.id));
       state.people.forEach((p) => { if (p.tableId) selection.add(p.id); });
       render();
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
+      const tbls = [...selection].map((id) => state.tables.find((t) => t.id === id)).filter(Boolean);
+      if (tbls.length) { e.preventDefault(); copyTables(tbls); }
+    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
+      if (clipboard.length) { e.preventDefault(); pasteTables(); }
     }
   });
 

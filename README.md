@@ -42,6 +42,17 @@ unavailable.
   resize it, rotate a rectangular table, duplicate it, or delete it.
 - Rectangular tables seat guests along the two long edges; round tables seat guests
   evenly around the circumference.
+- **Edit tables as a group:** select several tables (Shift‑click or drag a box) and the
+  Details panel shows shared *Seats / Width / Height / Radius* fields — change one and it
+  applies to every selected table. A blank field leaves that value untouched; a field
+  shows `mixed` when the selected tables don't currently agree.
+- **Copy / paste:** select one or more tables and press `Ctrl/Cmd+C`, then `Ctrl/Cmd+V`
+  to drop offset duplicates (relative spacing is preserved; repeated pastes stack
+  diagonally). *Copy tables* / *Duplicate tables* buttons in the Details panel do the
+  same. Seat assignments are not copied.
+- **Infinite grid:** drag a table toward any edge and the grid extends in that
+  direction — including up and left — so you're never boxed in. The layout tidies its
+  coordinates back toward the origin when you drag everything far out.
 
 ### Seating guests
 - Drag a guest from the list onto a seat. Drop onto the table body to take the first
@@ -56,7 +67,8 @@ unavailable.
   reverses it. Single items also have a *Locked* checkbox in the Details panel.
 
 ### Keyboard
-- `Esc` clears the selection · `Delete` removes selected items · `Ctrl/Cmd+A` selects all.
+- `Esc` clear selection · `Delete` remove selected · `Ctrl/Cmd+A` select all ·
+  `Ctrl/Cmd+C` / `Ctrl/Cmd+V` copy / paste selected tables.
 
 ### Saving
 - The plan auto‑saves to this browser. Use **Export** for a `.json` backup and
