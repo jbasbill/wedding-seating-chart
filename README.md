@@ -53,6 +53,10 @@ unavailable.
 - **Infinite grid:** drag a table toward any edge and the grid extends in that
   direction — including up and left — so you're never boxed in. The layout tidies its
   coordinates back toward the origin when you drag everything far out.
+- **Zoom:** the `−` / `+` buttons (or `Ctrl/Cmd` + `-` / `=`, or `Ctrl/Cmd` + scroll /
+  trackpad pinch) zoom from 20% to 200%; the middle button shows the level and resets to
+  100% (`Ctrl/Cmd 0`). **Fit** zooms so every table is visible at once. Zoom is
+  remembered between sessions.
 
 ### Seating guests
 - Drag a guest from the list onto a seat. Drop onto the table body to take the first
@@ -71,7 +75,8 @@ unavailable.
 
 ### Keyboard
 - `Esc` clear selection · `Delete` remove selected · `Ctrl/Cmd+A` select all ·
-  `Ctrl/Cmd+C` / `Ctrl/Cmd+V` copy / paste selected tables.
+  `Ctrl/Cmd+C` / `Ctrl/Cmd+V` copy / paste selected tables ·
+  `Ctrl/Cmd` `+` / `-` / `0` zoom in / out / reset.
 
 ### Saving
 - The plan auto‑saves to this browser. Use **Export** for a `.json` backup and

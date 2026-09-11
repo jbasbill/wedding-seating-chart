@@ -10,6 +10,9 @@
   const CANVAS_MARGIN = 500;      // breathing room kept past the furthest table
   const EDGE_PAD = 120;           // dragging within this of the edge grows the grid
   const GROW_STEP = 800;          // grid grows in chunks this big
+  const MIN_ZOOM = 0.2;
+  const MAX_ZOOM = 2;
+  const ZOOM_STEP = 1.25;         // each +/- press multiplies zoom by this
   const SEAT_GAP = 30;            // distance from table edge to seat centre
   const DRAG_THRESHOLD = 4;       // px before a press becomes a drag
 
@@ -29,7 +32,7 @@
     return {
       people: [],
       tables: [],
-      settings: { snap: true, grid: 20, canvasW: MIN_CANVAS_W, canvasH: MIN_CANVAS_H },
+      settings: { snap: true, grid: 20, zoom: 1, canvasW: MIN_CANVAS_W, canvasH: MIN_CANVAS_H },
     };
   }
 
@@ -49,6 +52,7 @@
     s.settings = s.settings && typeof s.settings === "object" ? s.settings : {};
     if (typeof s.settings.snap !== "boolean") s.settings.snap = true;
     if (!Number.isFinite(s.settings.grid)) s.settings.grid = 20;
+    s.settings.zoom = clamp(Number.isFinite(s.settings.zoom) ? s.settings.zoom : 1, MIN_ZOOM, MAX_ZOOM);
     s.settings.canvasW = Math.max(MIN_CANVAS_W, s.settings.canvasW || 0);
     s.settings.canvasH = Math.max(MIN_CANVAS_H, s.settings.canvasH || 0);
     for (const p of s.people) {
@@ -100,9 +104,63 @@
     return { x: t.x + b.w / 2, y: t.y + b.h / 2 };
   }
 
+  const zoom = () => state.settings.zoom;
+
   function applyCanvasSize() {
+    const z = state.settings.zoom;
     canvas.style.width = state.settings.canvasW + "px";
     canvas.style.height = state.settings.canvasH + "px";
+    canvas.style.transform = z === 1 ? "" : `scale(${z})`;
+    zoomer.style.width = Math.round(state.settings.canvasW * z) + "px";
+    zoomer.style.height = Math.round(state.settings.canvasH * z) + "px";
+  }
+
+  /* Change zoom, keeping the grid point under (pivotX, pivotY) — in client
+   * coordinates, default the centre of the stage — fixed on screen. */
+  function setZoom(target, pivotX, pivotY) {
+    const z0 = state.settings.zoom;
+    const z1 = clamp(target, MIN_ZOOM, MAX_ZOOM);
+    if (z1 === z0) return;
+    const r = stage.getBoundingClientRect();
+    const px = (pivotX == null ? r.left + stage.clientWidth / 2 : pivotX) - r.left;
+    const py = (pivotY == null ? r.top + stage.clientHeight / 2 : pivotY) - r.top;
+    state.settings.zoom = z1;
+    applyCanvasSize();
+    stage.scrollLeft = (stage.scrollLeft + px) * (z1 / z0) - px;
+    stage.scrollTop = (stage.scrollTop + py) * (z1 / z0) - py;
+    syncZoomLabel();
+    save();
+  }
+
+  function zoomBy(factor, pivotX, pivotY) {
+    setZoom(state.settings.zoom * factor, pivotX, pivotY);
+  }
+
+  function zoomToFit() {
+    if (!state.tables.length) { setZoom(1); return; }
+    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+    for (const t of state.tables) {
+      const b = tableBox(t);
+      minX = Math.min(minX, t.x);
+      minY = Math.min(minY, t.y);
+      maxX = Math.max(maxX, t.x + b.w);
+      maxY = Math.max(maxY, t.y + b.h);
+    }
+    const pad = 80;
+    const w = maxX - minX + pad * 2;
+    const h = maxY - minY + pad * 2;
+    const z = clamp(Math.min(stage.clientWidth / w, stage.clientHeight / h), MIN_ZOOM, MAX_ZOOM);
+    state.settings.zoom = z;
+    applyCanvasSize();
+    stage.scrollLeft = Math.max(0, (minX - pad) * z);
+    stage.scrollTop = Math.max(0, (minY - pad) * z);
+    syncZoomLabel();
+    save();
+  }
+
+  function syncZoomLabel() {
+    const btn = document.getElementById("zoom-reset");
+    if (btn) btn.textContent = Math.round(state.settings.zoom * 100) + "%";
   }
 
   /* Grow the grid to fit the furthest table, and reclaim large empty margins on
@@ -132,6 +190,7 @@
     const shiftX = expanded && minX > slack ? Math.round(minX - CANVAS_MARGIN) : 0;
     const shiftY = expanded && minY > slack ? Math.round(minY - CANVAS_MARGIN) : 0;
     if (shiftX || shiftY) {
+      const z = state.settings.zoom;
       const sx = stage.scrollLeft;
       const sy = stage.scrollTop;
       for (const t of state.tables) { t.x -= shiftX; t.y -= shiftY; }
@@ -140,8 +199,8 @@
       state.settings.canvasW = Math.max(MIN_CANVAS_W, Math.round(maxX + CANVAS_MARGIN));
       state.settings.canvasH = Math.max(MIN_CANVAS_H, Math.round(maxY + CANVAS_MARGIN));
       applyCanvasSize();
-      stage.scrollLeft = sx - shiftX;
-      stage.scrollTop = sy - shiftY;
+      stage.scrollLeft = sx - shiftX * z;
+      stage.scrollTop = sy - shiftY * z;
     } else {
       state.settings.canvasW = Math.max(MIN_CANVAS_W, Math.round(maxX + CANVAS_MARGIN));
       state.settings.canvasH = Math.max(MIN_CANVAS_H, Math.round(maxY + CANVAS_MARGIN));
@@ -222,8 +281,9 @@
   function addTable(kind) {
     const base = kind === "circle" ? CIRCLE_DEFAULT : RECT_DEFAULT;
     const b = kind === "circle" ? { w: base.r * 2, h: base.r * 2 } : { w: base.w, h: base.h };
-    const cx = stage.scrollLeft + stage.clientWidth / 2;
-    const cy = stage.scrollTop + stage.clientHeight / 2;
+    const z = state.settings.zoom;
+    const cx = (stage.scrollLeft + stage.clientWidth / 2) / z;
+    const cy = (stage.scrollTop + stage.clientHeight / 2) / z;
     const t = {
       id: uid(),
       kind,
@@ -403,6 +463,7 @@
   // --------------------------------------------------------------- render ---
   const canvas = document.getElementById("canvas");
   const stage = document.getElementById("stage");
+  const zoomer = document.getElementById("zoomer");
   const guestList = document.getElementById("guest-list");
   const inspectorBody = document.getElementById("inspector-body");
 
@@ -964,8 +1025,9 @@
    * dragged past any boundary without limit. */
   function applyGroupDrag() {
     if (!press) return;
-    const dx = press.lastX - press.startX + (stage.scrollLeft - press.scrollX0);
-    const dy = press.lastY - press.startY + (stage.scrollTop - press.scrollY0);
+    const z = state.settings.zoom;
+    const dx = (press.lastX - press.startX + (stage.scrollLeft - press.scrollX0)) / z;
+    const dy = (press.lastY - press.startY + (stage.scrollTop - press.scrollY0)) / z;
     const cw = state.settings.canvasW;
     const ch = state.settings.canvasH;
     const chunk = (over) => Math.ceil(over / GROW_STEP) * GROW_STEP;
@@ -991,17 +1053,17 @@
       if (growL || growT) {
         for (const t of state.tables) { t.x += growL; t.y += growT; }
         for (const o of press.origins.values()) { o.x += growL; o.y += growT; }
-        stage.scrollLeft += growL;
-        stage.scrollTop += growT;
-        press.scrollX0 += growL; // cancel the compensating scroll so dx stays put
-        press.scrollY0 += growT;
+        stage.scrollLeft += growL * z;
+        stage.scrollTop += growT * z;
+        press.scrollX0 += growL * z; // cancel the compensating scroll so dx stays put
+        press.scrollY0 += growT * z;
       }
       applyCanvasSize();
       repositionAllGroups();
     }
 
-    const ddx = press.lastX - press.startX + (stage.scrollLeft - press.scrollX0);
-    const ddy = press.lastY - press.startY + (stage.scrollTop - press.scrollY0);
+    const ddx = (press.lastX - press.startX + (stage.scrollLeft - press.scrollX0)) / z;
+    const ddy = (press.lastY - press.startY + (stage.scrollTop - press.scrollY0)) / z;
     for (const t of dragged) {
       const o = press.origins.get(t.id);
       t.x = snap(o.x + ddx);
@@ -1042,7 +1104,8 @@
 
   function stageToCanvas(e) {
     const rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const z = state.settings.zoom;
+    return { x: (e.clientX - rect.left) / z, y: (e.clientY - rect.top) / z };
   }
 
   function startMarquee(e) {
@@ -1177,6 +1240,18 @@
     render();
   });
 
+  document.getElementById("zoom-in").addEventListener("click", () => zoomBy(ZOOM_STEP));
+  document.getElementById("zoom-out").addEventListener("click", () => zoomBy(1 / ZOOM_STEP));
+  document.getElementById("zoom-reset").addEventListener("click", () => setZoom(1));
+  document.getElementById("zoom-fit").addEventListener("click", zoomToFit);
+
+  // Ctrl/Cmd + wheel (also trackpad pinch) zooms toward the pointer
+  stage.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
+  }, { passive: false });
+
   document.getElementById("add-pasted").addEventListener("click", () => {
     const ta = document.getElementById("paste-names");
     const names = ta.value.split(/\r?\n/);
@@ -1271,12 +1346,22 @@
       if (tbls.length) { e.preventDefault(); copyTables(tbls); }
     } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
       if (clipboard.length) { e.preventDefault(); pasteTables(); }
+    } else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
+      e.preventDefault();
+      zoomBy(ZOOM_STEP);
+    } else if ((e.metaKey || e.ctrlKey) && e.key === "-") {
+      e.preventDefault();
+      zoomBy(1 / ZOOM_STEP);
+    } else if ((e.metaKey || e.ctrlKey) && e.key === "0") {
+      e.preventDefault();
+      setZoom(1);
     }
   });
 
   function syncControls() {
     document.getElementById("snap-toggle").checked = state.settings.snap;
     document.getElementById("grid-size").value = String(state.settings.grid);
+    syncZoomLabel();
   }
 
   // ---------------------------------------------------------------- boot ---

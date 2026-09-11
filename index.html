@@ -40,6 +40,13 @@
         </label>
       </div>
 
+      <div class="tool-group zoom-group">
+        <button id="zoom-out" class="btn icon" title="Zoom out (Ctrl/Cmd -, or Ctrl/Cmd + scroll)">&#8722;</button>
+        <button id="zoom-reset" class="btn" title="Reset to 100% (Ctrl/Cmd 0)">100%</button>
+        <button id="zoom-in" class="btn icon" title="Zoom in (Ctrl/Cmd +, or Ctrl/Cmd + scroll)">+</button>
+        <button id="zoom-fit" class="btn ghost" title="Zoom to fit every table">Fit</button>
+      </div>
+
       <div class="tool-group">
         <button id="export-project" class="btn ghost" title="Download the whole plan as a .json file">Export</button>
         <button id="import-project" class="btn ghost" title="Load a plan from a .json file">Import</button>
@@ -78,8 +85,10 @@
     </aside>
 
     <main id="stage">
-      <div id="canvas">
-        <div id="marquee" hidden></div>
+      <div id="zoomer">
+        <div id="canvas">
+          <div id="marquee" hidden></div>
+        </div>
       </div>
     </main>
 

@@ -81,6 +81,8 @@ button { font-family: inherit; }
 .btn:hover { background: var(--rose-soft); border-color: var(--rose); }
 .btn:active { transform: translateY(1px); }
 .btn.small { padding: 6px 10px; font-size: 12px; }
+.btn.icon { font-size: 16px; line-height: 1; padding: 6px 11px; font-weight: 600; }
+.zoom-group #zoom-reset { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
 .btn.ghost { background: transparent; }
 .btn.ghost:hover { background: #f0e9df; border-color: var(--muted); }
 .btn.danger:hover { background: #f3d9d9; border-color: #c96a6a; color: #9c3b3b; }
@@ -196,10 +198,16 @@ textarea:focus, input:focus { outline: 2px solid var(--rose-soft); border-color:
   overflow: auto;
   background: var(--bg);
 }
+#zoomer {
+  position: relative;
+  width: 2600px;
+  height: 1800px;
+}
 #canvas {
   position: relative;
   width: 2600px;
   height: 1800px;
+  transform-origin: 0 0;
   background-color: var(--bg);
   background-image:
     linear-gradient(to right, rgba(120, 105, 90, .10) 1px, transparent 1px),
