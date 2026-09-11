@@ -330,7 +330,9 @@
 
     if (occupant) {
       if (occupant.locked) return; // can't bump a locked guest
-      // swap: occupant takes the dragged guest's previous seat (or is unseated)
+      // Swap: the occupant moves into the dragged guest's old seat. If the
+      // dragged guest came from the list (from.tableId is null), the occupant
+      // is sent back to the list rather than to another seat.
       occupant.tableId = from.tableId;
       occupant.seatIndex = from.seatIndex;
     }
@@ -486,7 +488,7 @@
       const person = occupants.get(i);
       if (person) {
         seat.classList.add("occupied");
-        group.appendChild(buildPersonSquare(person, p));
+        group.appendChild(buildPersonSquare(person, p, t.id, i));
       }
       group.appendChild(seat);
     });
@@ -494,7 +496,7 @@
     return group;
   }
 
-  function buildPersonSquare(person, offset) {
+  function buildPersonSquare(person, offset, tableId, seatIndex) {
     const sq = el("div", "person");
     sq.dataset.id = person.id;
     sq.style.left = offset.x + "px";
@@ -517,6 +519,24 @@
     sq.addEventListener("dragend", () => {
       dragPersonId = null;
       sq.classList.remove("dragging");
+    });
+
+    // Dropping a guest onto a seated guest swaps them (see seatPerson): an
+    // occupant coming from another seat moves to the dragged guest's old seat;
+    // if the dragged guest came from the list, the occupant returns to the list.
+    sq.addEventListener("dragover", (e) => {
+      if (dragPersonId == null || dragPersonId === person.id || person.locked) return;
+      e.preventDefault();
+      sq.classList.add("swap-target");
+    });
+    sq.addEventListener("dragleave", () => sq.classList.remove("swap-target"));
+    sq.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      sq.classList.remove("swap-target");
+      if (dragPersonId != null && dragPersonId !== person.id) {
+        seatPerson(dragPersonId, tableId, seatIndex);
+      }
     });
     // Selection happens on click so it never pre-empts a native drag gesture.
     sq.addEventListener("click", (e) => {

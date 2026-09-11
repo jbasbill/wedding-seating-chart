@@ -300,6 +300,11 @@ textarea:focus, input:focus { outline: 2px solid var(--rose-soft); border-color:
 .person.selected { outline: 3px solid var(--rose); outline-offset: 1px; }
 .person.locked { border-style: dashed; cursor: default; background: #fbf7f0; }
 .person.dragging { opacity: .4; }
+.person.swap-target {
+  background: var(--rose-soft);
+  border-color: var(--rose);
+  box-shadow: 0 0 0 3px var(--rose), var(--shadow);
+}
 .person .p-lock { position: absolute; top: -6px; right: -6px; font-size: 9px; }
 
 /* ---------- inspector ---------- */

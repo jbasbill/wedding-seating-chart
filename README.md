@@ -56,7 +56,10 @@ unavailable.
 
 ### Seating guests
 - Drag a guest from the list onto a seat. Drop onto the table body to take the first
-  free seat. Drag a seated guest onto another seat to move them (occupied seats swap).
+  free seat.
+- **Dropping a guest onto a seat that's already taken swaps them:** if the dragged guest
+  came from another seat, the person who was there moves into that now-empty seat; if the
+  dragged guest came from the list, the person who was there goes back to the list.
 - Drag a guest back to the list to unseat them.
 - Guests show as small squares with their name, sitting at their seat.
 
