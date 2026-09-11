@@ -31,8 +31,10 @@ unavailable.
   columns, otherwise the first column. Quoted fields with commas are handled.
   See `sample-guests.csv`.
 - Duplicates (same name) are skipped.
-- The guest list is always sorted alphabetically. Toggle *Show seated guests* to see
-  everyone plus where they're sitting.
+- The guest list is sorted by **last name, then first name**, and shown as
+  `Last, First` (the last whitespace‑separated word is taken as the surname, or the part
+  before a comma if you type `Lovelace, Ada`). Search matches either form. Toggle
+  *Show seated guests* to see everyone plus where they're sitting.
 
 ### Tables
 - *Rectangular table* and *Round table* buttons add a table at the centre of the view.
@@ -69,7 +71,8 @@ unavailable.
 
 ### Locking (so nothing moves by accident)
 - Select one item (click) or many (Shift‑click, or drag a box around them on the
-  canvas), then click **Lock selected**. Works on tables and guests together.
+  canvas — the grid pans when the box reaches the edge of the view), then click
+  **Lock selected**. Works on tables and guests together.
 - Locked tables won't drag; locked guests won't move between seats. **Unlock selected**
   reverses it. Single items also have a *Locked* checkbox in the Details panel.
 

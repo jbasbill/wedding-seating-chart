@@ -21,7 +21,34 @@
 
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+
+  /* Split a name into { last, first } for sorting. "Grace Hopper" -> Hopper/Grace;
+   * "Hopper, Grace" -> Hopper/Grace; "Tim Berners-Lee" -> Berners-Lee/Tim;
+   * a single word is treated as the last name. */
+  function splitName(name) {
+    const s = String(name || "").trim().replace(/\s+/g, " ");
+    if (s.includes(",")) {
+      const i = s.indexOf(",");
+      return { last: s.slice(0, i).trim(), first: s.slice(i + 1).trim() };
+    }
+    const parts = s.split(" ");
+    if (parts.length < 2) return { last: s, first: "" };
+    return { last: parts[parts.length - 1], first: parts.slice(0, -1).join(" ") };
+  }
+
+  function displayName(name) {
+    const { last, first } = splitName(name);
+    return first ? `${last}, ${first}` : last;
+  }
+
+  const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  const byName = (a, b) => {
+    const na = splitName(a.name);
+    const nb = splitName(b.name);
+    return collator.compare(na.last, nb.last)
+      || collator.compare(na.first, nb.first)
+      || collator.compare(a.name, b.name);
+  };
 
   // ---------------------------------------------------------------- state ---
   let state = defaultState();
@@ -614,7 +641,10 @@
 
     let people = [...state.people].sort(byName);
     if (!showSeated) people = people.filter((p) => !p.tableId);
-    if (search) people = people.filter((p) => p.name.toLowerCase().includes(search));
+    if (search) {
+      people = people.filter((p) =>
+        p.name.toLowerCase().includes(search) || displayName(p.name).toLowerCase().includes(search));
+    }
 
     guestList.innerHTML = "";
     if (!people.length) {
@@ -631,7 +661,9 @@
       if (p.locked) row.classList.add("locked");
       if (selection.has(p.id)) row.classList.add("selected");
       row.appendChild(el("span", "dot"));
-      row.appendChild(el("span", "name", p.name));
+      const nameEl = el("span", "name", displayName(p.name));
+      nameEl.title = p.name;
+      row.appendChild(nameEl);
       if (p.locked) row.appendChild(el("span", "mini-lock", "🔒"));
       if (p.tableId) row.appendChild(el("span", "where", tableName.get(p.tableId)));
 
@@ -974,7 +1006,13 @@
   });
 
   canvas.addEventListener("pointermove", (e) => {
-    if (marquee) { updateMarquee(e); return; }
+    if (marquee) {
+      marquee.lastX = e.clientX;
+      marquee.lastY = e.clientY;
+      updateMarquee(e.clientX, e.clientY);
+      edgePan(e.clientX, e.clientY, marqueePan);
+      return;
+    }
     if (!press) return;
     press.lastX = e.clientX;
     press.lastY = e.clientY;
@@ -982,41 +1020,44 @@
     if (!press.moved && moved < DRAG_THRESHOLD) return;
     press.moved = true;
     applyGroupDrag();
-    updateAutoScroll();
+    edgePan(press.lastX, press.lastY, applyGroupDrag);
   });
 
-  /* Keep scrolling the stage while the cursor sits in the edge zone during a
-   * drag, so a table can be dragged past the visible area. */
-  let autoScrollV = { x: 0, y: 0 };
+  const marqueePan = () => marquee && updateMarquee(marquee.lastX, marquee.lastY);
 
-  function updateAutoScroll() {
-    if (!press || !press.moved) return stopAutoScroll();
+  /* While a pointer sits in the edge zone during a drag or marquee, keep
+   * scrolling the stage in that direction and let the caller re-apply. */
+  let panPointer = null; // { x, y, apply }
+
+  function edgePan(clientX, clientY, apply) {
     const r = stage.getBoundingClientRect();
-    autoScrollV = {
-      x: press.lastX < r.left + EDGE_SCROLL_ZONE ? -1
-        : press.lastX > r.right - EDGE_SCROLL_ZONE ? 1 : 0,
-      y: press.lastY < r.top + EDGE_SCROLL_ZONE ? -1
-        : press.lastY > r.bottom - EDGE_SCROLL_ZONE ? 1 : 0,
-    };
-    if (!autoScrollV.x && !autoScrollV.y) return stopAutoScroll();
+    const vx = clientX < r.left + EDGE_SCROLL_ZONE ? -1
+      : clientX > r.right - EDGE_SCROLL_ZONE ? 1 : 0;
+    const vy = clientY < r.top + EDGE_SCROLL_ZONE ? -1
+      : clientY > r.bottom - EDGE_SCROLL_ZONE ? 1 : 0;
+    if (!vx && !vy) return stopEdgePan();
+    panPointer = { x: clientX, y: clientY, apply };
     if (autoScrollRAF || typeof requestAnimationFrame !== "function") return;
     const tick = () => {
-      if (!press || !press.moved || (!autoScrollV.x && !autoScrollV.y)) {
-        autoScrollRAF = null;
-        return;
-      }
-      stage.scrollLeft += autoScrollV.x * EDGE_SCROLL_SPEED;
-      stage.scrollTop += autoScrollV.y * EDGE_SCROLL_SPEED;
-      applyGroupDrag();
+      if (!panPointer) { autoScrollRAF = null; return; }
+      const rr = stage.getBoundingClientRect();
+      const gx = panPointer.x < rr.left + EDGE_SCROLL_ZONE ? -1
+        : panPointer.x > rr.right - EDGE_SCROLL_ZONE ? 1 : 0;
+      const gy = panPointer.y < rr.top + EDGE_SCROLL_ZONE ? -1
+        : panPointer.y > rr.bottom - EDGE_SCROLL_ZONE ? 1 : 0;
+      if (!gx && !gy) { autoScrollRAF = null; panPointer = null; return; }
+      stage.scrollLeft += gx * EDGE_SCROLL_SPEED;
+      stage.scrollTop += gy * EDGE_SCROLL_SPEED;
+      panPointer.apply();
       autoScrollRAF = requestAnimationFrame(tick);
     };
     autoScrollRAF = requestAnimationFrame(tick);
   }
 
-  function stopAutoScroll() {
+  function stopEdgePan() {
     if (autoScrollRAF && typeof cancelAnimationFrame === "function") cancelAnimationFrame(autoScrollRAF);
     autoScrollRAF = null;
-    autoScrollV = { x: 0, y: 0 };
+    panPointer = null;
   }
 
   /* Move every dragged table to follow the cursor (in grid coordinates, so it
@@ -1084,7 +1125,7 @@
   function endPress(e) {
     if (marquee) { endMarquee(); return; }
     if (!press) return;
-    stopAutoScroll();
+    stopEdgePan();
     if (press.moved) {
       render();
     } else if (!press.shift) {
@@ -1102,15 +1143,19 @@
   const marqueeEl = document.getElementById("marquee");
   let marquee = null; // { x0, y0, additive }
 
-  function stageToCanvas(e) {
+  function stageToCanvas(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
     const z = state.settings.zoom;
-    return { x: (e.clientX - rect.left) / z, y: (e.clientY - rect.top) / z };
+    return { x: (clientX - rect.left) / z, y: (clientY - rect.top) / z };
   }
 
   function startMarquee(e) {
-    const p = stageToCanvas(e);
-    marquee = { x0: p.x, y0: p.y, additive: e.shiftKey || e.metaKey || e.ctrlKey };
+    const p = stageToCanvas(e.clientX, e.clientY);
+    marquee = {
+      x0: p.x, y0: p.y,
+      lastX: e.clientX, lastY: e.clientY,
+      additive: e.shiftKey || e.metaKey || e.ctrlKey,
+    };
     if (!marquee.additive) { selection.clear(); render(); }
     marqueeEl.hidden = false;
     marqueeEl.style.left = p.x + "px";
@@ -1120,8 +1165,9 @@
     canvas.setPointerCapture(e.pointerId);
   }
 
-  function updateMarquee(e) {
-    const p = stageToCanvas(e);
+  function updateMarquee(clientX, clientY) {
+    if (!marquee) return;
+    const p = stageToCanvas(clientX, clientY);
     const x = Math.min(p.x, marquee.x0);
     const y = Math.min(p.y, marquee.y0);
     const w = Math.abs(p.x - marquee.x0);
@@ -1134,6 +1180,7 @@
   }
 
   function endMarquee() {
+    stopEdgePan();
     const r = marquee.rect;
     if (r && (r.w > 3 || r.h > 3)) {
       const inside = (x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
